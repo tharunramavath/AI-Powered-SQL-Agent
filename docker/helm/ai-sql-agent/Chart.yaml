@@ -1,0 +1,17 @@
+apiVersion: v2
+name: ai-sql-agent
+description: AI SQL Agent - natural language to SQL backed by a LangGraph agent.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - ai
+  - sql
+  - langgraph
+  - fastapi
+
+maintainers:
+  - name: AI SQL Agent
+
+dependencies: []

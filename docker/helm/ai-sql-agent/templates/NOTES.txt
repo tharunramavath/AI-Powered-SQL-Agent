@@ -1,0 +1,17 @@
+Thank you for installing {{ .Chart.Name }} {{ .Chart.Version }}.
+
+The AI SQL Agent is now deployed.
+
+Get the frontend URL by running these commands:
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "ai-sql-agent.name" . }},app.kubernetes.io/component=frontend" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:80
+
+{{- if .Values.ingress.enabled }}
+Or access it via the ingress:
+  http://{{ (first .Values.ingress.hosts).host }}
+{{- end }}
+
+Check the backend health:
+  kubectl --namespace {{ .Release.Namespace }} exec deploy/{{ include "ai-sql-agent.fullname" . }}-app -- \
+    curl -fsS http://localhost:8000/api/v1/health

@@ -1,0 +1,28 @@
+# ============================================================
+# Datasource registry.
+# Each entry is a queryable database. The connection URL can be set
+# directly here or via an env var using `url_env`.
+# ============================================================
+
+datasources:
+  - id: default
+    display_name: "Default datasource"
+    # dialect auto-detected from the URL (sqlite / postgresql / mysql / ...)
+    # url: postgresql+psycopg://user:pass@localhost:5432/db
+    url_env: DATASOURCE_URL
+    allowed_roles: []
+    max_rows: 500
+
+  # - id: analytics
+  #   display_name: "Analytics Warehouse"
+  #   dialect: snowflake
+  #   url_env: DATASOURCE_URL_ANALYTICS
+  #   allowed_roles: [analyst, admin]
+  #   max_rows: 1000
+  #   semantic_layer:
+  #     metrics:
+  #       - name: mrr
+  #         expression: SUM(amount) WHERE plan_type = 'monthly'
+  #         definition: Monthly recurring revenue.
+  #     glossary:
+  #       plan_type: The billing plan a customer is on.

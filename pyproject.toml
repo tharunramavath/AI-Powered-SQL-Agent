@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-sql-agent"
+version = "0.1.0"
+description = "Production-ready AI SQL Agent: natural language questions answered from SQL databases via a LangGraph agent."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "AI SQL Agent" }]
+keywords = ["ai", "sql", "llm", "langgraph", "fastapi", "agent"]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "langchain-core>=1.0",
+    "langchain>=1.0",
+    "langchain-groq>=1.0",
+    "langgraph>=1.2",
+    "langgraph-checkpoint>=2.0",
+    "langsmith>=0.1",
+    "langfuse>=2.0",
+    "sqlalchemy>=2.0",
+    "sqlglot>=25.0",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "prometheus-client>=0.20",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# LLM providers (Groq is bundled by default)
+llm-openai = ["langchain-openai>=1.0"]
+llm-anthropic = ["langchain-anthropic>=1.0"]
+llm-gemini = ["langchain-google-genai>=1.0"]
+
+# Database dialects
+db-postgres = ["psycopg[binary]>=3.2"]
+db-mysql = ["pymysql>=1.1"]
+db-mssql = ["pyodbc>=5.1"]
+db-snowflake = ["snowflake-sqlalchemy>=1.6"]
+db-bigquery = ["sqlalchemy-bigquery>=1.11"]
+db-sqlite = []
+
+# Caching, vector store, memory persistence
+cache-redis = ["redis>=5.0"]
+vector-qdrant = ["qdrant-client>=1.9", "sentence-transformers>=3.0"]
+memory-postgres = ["psycopg[binary]>=3.2", "langgraph-checkpoint-postgres>=2.0"]
+
+# Observability
+otel = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+]
+
+# Development / testing
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.11",
+]
+
+# Simple Streamlit UI (replaces the React SPA for local use)
+ui = [
+    "streamlit>=1.40",
+]
+
+all = [
+    "ai-sql-agent[llm-openai,llm-anthropic,llm-gemini]",
+    "ai-sql-agent[db-postgres,db-mysql,db-mssql,db-snowflake,db-bigquery]",
+    "ai-sql-agent[cache-redis,vector-qdrant,memory-postgres]",
+    "ai-sql-agent[otel,dev]",
+]
+
+[project.scripts]
+ai-sql-agent = "backend.app:main"
+ai-sql-agent-eval = "tests.eval.run_eval:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

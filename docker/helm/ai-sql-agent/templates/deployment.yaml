@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-sql-agent.fullname" . }}-app
+  labels:
+    app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+        app.kubernetes.io/component: app
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ENV
+              value: {{ .Values.app.env }}
+            - name: LOG_LEVEL
+              value: {{ .Values.app.logLevel }}
+            - name: GROQ_MODEL
+              value: {{ .Values.app.groqModel }}
+            - name: MAX_ROWS
+              value: "{{ .Values.app.maxRows }}"
+            - name: QUERY_TIMEOUT_SECONDS
+              value: "{{ .Values.app.queryTimeoutSeconds }}"
+            - name: REQUIRE_APPROVAL
+              value: "{{ .Values.app.requireApproval }}"
+            - name: EXPENSIVE_QUERY_THRESHOLD
+              value: "{{ .Values.app.expensiveQueryThreshold }}"
+            - name: CORS_ORIGINS
+              value: {{ .Values.app.corsOrigins }}
+            - name: DATASOURCE_ID
+              value: {{ .Values.datasource.id }}
+            {{- if .Values.datasource.url }}
+            - name: DATASOURCE_URL
+              value: {{ .Values.datasource.url | quote }}
+            {{- end }}
+            - name: CACHE_ENABLED
+              value: "{{ .Values.dependencies.redis.cacheEnabled }}"
+            - name: REDIS_URL
+              value: {{ .Values.dependencies.redis.url }}
+            - name: VECTOR_ENABLED
+              value: "{{ .Values.dependencies.qdrant.vectorEnabled }}"
+            - name: QDRANT_URL
+              value: {{ .Values.dependencies.qdrant.url }}
+            - name: OTEL_ENABLED
+              value: "{{ .Values.observability.otelEnabled }}"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otelExporterEndpoint }}
+            - name: LANGFUSE_ENABLED
+              value: "{{ .Values.observability.langfuseEnabled }}"
+            - name: LANGFUSE_HOST
+              value: {{ .Values.observability.langfuseHost }}
+            {{- if .Values.observability.langfuseRelease }}
+            - name: LANGFUSE_RELEASE
+              value: {{ .Values.observability.langfuseRelease | quote }}
+            {{- end }}
+            {{- if .Values.secret.create }}
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-sql-agent.fullname" . }}
+                  key: groq-api-key
+            - name: API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-sql-agent.fullname" . }}
+                  key: api-keys
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-sql-agent.fullname" . }}
+                  key: langfuse-public-key
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-sql-agent.fullname" . }}
+                  key: langfuse-secret-key
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources.app | nindent 12 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-sql-agent.fullname" . }}-frontend
+  labels:
+    app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontendImage.repository }}:{{ .Values.frontendImage.tag }}"
+          imagePullPolicy: {{ .Values.frontendImage.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources.frontend | nindent 12 }}

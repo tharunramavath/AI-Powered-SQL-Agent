@@ -1,0 +1,40 @@
+# ============================================================
+# Semantic Layer: business metrics, glossary, and join hints.
+# Injected into the agent system prompt to improve SQL accuracy.
+# ============================================================
+
+metrics:
+  - name: revenue
+    expression: SUM(total_price)
+    definition: Total sales value = SUM(orders.total_price). Revenue is the
+      sum of the total_price column in the orders table.
+    table: orders
+
+  - name: active_customer
+    expression: purchased within the last 90 days
+    definition: A customer is considered active if they have at least one
+      order with order_date within the last 90 days from the reference date.
+
+  - name: avg_order_value
+    expression: AVG(total_price)
+    definition: Average sales value per order = AVG(orders.total_price).
+    table: orders
+
+  - name: total_customers
+    expression: COUNT(DISTINCT customer_id)
+    definition: Number of distinct customers.
+    table: orders
+
+glossary:
+  customer: A person or entity that places orders.
+  product: An item available for purchase.
+  order: A purchase transaction placed by a customer.
+  order_date: The date an order was placed.
+  MRR: Monthly recurring revenue.
+  churn: A customer who has not placed an order in the last 90 days.
+
+# Optional hints about how tables are related; appended to schema text.
+join_hints:
+  - "orders.product_id references products.id"
+  - "orders.customer_id references customers.id"
+  - "payments.order_id references orders.id"

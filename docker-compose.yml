@@ -1,0 +1,109 @@
+# ============================================================
+# AI SQL Agent - full local stack
+#   app, postgres (primary DB), redis (cache), qdrant (vector store),
+#   otel-collector (traces/metrics)
+#
+# Usage:
+#   docker compose up --build
+#   docker compose up -d qdrant redis otel-collector   # only infra
+# ============================================================
+
+name: ai-sql-agent
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-sql-agent:latest
+    restart: unless-stopped
+    environment:
+      ENV: prod
+      LOG_LEVEL: INFO
+      HOST: 0.0.0.0
+      PORT: 8000
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      # LLM
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      # Primary datasource -> compose postgres
+      DATASOURCE_URL: postgresql+psycopg://agent:agent@postgres:5432/agent
+      DATASOURCE_ID: default
+      # Cache
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      REDIS_URL: redis://redis:6379/0
+      # Vector store
+      VECTOR_ENABLED: ${VECTOR_ENABLED:-true}
+      QDRANT_URL: http://qdrant:6333
+      # Observability
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.10.0
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.107.0
+    restart: unless-stopped
+    command: ["--config=/etc/otel/config.yaml"]
+    ports:
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ./docker/otel/otel-collector.yaml:/etc/otel/config.yaml:ro
+
+volumes:
+  pg_data:
+  redis_data:
+  qdrant_data:

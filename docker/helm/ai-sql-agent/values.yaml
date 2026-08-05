@@ -1,0 +1,96 @@
+# ============================================================
+# AI SQL Agent - Helm chart default values
+# ============================================================
+
+# Global image settings. Override via --set image.repository=...
+image:
+  repository: ai-sql-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+frontendImage:
+  repository: ai-sql-agent-frontend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# --- App configuration (mirrors backend/core/config.py) ---
+app:
+  env: prod
+  logLevel: INFO
+  groqApiKey: ""            # prefer setting via --set-string or a Secret
+  groqModel: llama-3.3-70b-versatile
+  maxRows: 500
+  queryTimeoutSeconds: 30
+  requireApproval: false
+  expensiveQueryThreshold: 1000000
+  corsOrigins: "https://ai-sql-agent.example.com"
+  apiKeys: ""               # comma-separated bearer tokens; empty = disabled
+
+# --- Datasource (default Postgres managed elsewhere) ---
+datasource:
+  id: default
+  url: ""                   # SQLAlchemy URL; empty disables default datasource
+
+# --- Dependencies (disable to use managed services) ---
+dependencies:
+  redis:
+    enabled: true
+    url: "redis://ai-sql-agent-redis:6379/0"
+    cacheEnabled: true
+  qdrant:
+    enabled: true
+    url: "http://ai-sql-agent-qdrant:6333"
+    vectorEnabled: true
+
+# --- Observability (LangFuse Cloud) ---
+observability:
+  otelEnabled: false
+  otelExporterEndpoint: "http://otel-collector:4318"
+  langfuseEnabled: false
+  langfuseHost: "https://cloud.langfuse.com"
+  langfuseRelease: ""
+
+# --- Service / ingress ---
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  hosts:
+    - host: ai-sql-agent.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: ai-sql-agent-tls
+  #    hosts:
+  #      - ai-sql-agent.example.com
+
+# --- Resources ---
+resources:
+  app:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+# --- Secrets ---
+secret:
+  create: true
+  groqApiKey: ""
+  apiKeys: ""
+  langfusePublicKey: ""
+  langfuseSecretKey: ""

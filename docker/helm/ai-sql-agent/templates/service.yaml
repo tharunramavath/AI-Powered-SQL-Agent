@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-sql-agent.fullname" . }}-app
+  labels:
+    {{- include "ai-sql-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+    app.kubernetes.io/component: app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-sql-agent.fullname" . }}-frontend
+  labels:
+    {{- include "ai-sql-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "ai-sql-agent.name" . }}
+    app.kubernetes.io/component: frontend
