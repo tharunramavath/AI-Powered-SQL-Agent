@@ -101,7 +101,7 @@ class SqlGeneratorNode:
             return ""
         last = errors[-1]
         return (
-            f"This is attempt {attempts}. The previous attempt failed with:\n"
+            f"This is attempt {attempts + 1}. The previous attempt failed with:\n"
             f"{last}\n"
             "Fix the SQL to avoid this exact problem. Do not repeat the same mistake."
         )

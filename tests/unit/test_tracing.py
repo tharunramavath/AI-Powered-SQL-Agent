@@ -14,31 +14,35 @@ from tests.integration.test_agent_flow import FakeLLM
 
 
 class FakeGeneration:
-    """A fake LangFuse generation object."""
+    """A fake LangFuse generation object (v4 start_observation API)."""
 
     def __init__(self, owner):
         self.owner = owner
+
+    def update(self, **kwargs):
+        pass
 
     def end(self, **kwargs):
         self.owner.generation_ends += 1
 
 
 class FakeTrace:
-    """A fake LangFuse trace object."""
+    """A fake LangFuse trace/root-observation object (v4 API)."""
 
     def __init__(self, trace_id, owner):
         self.id = trace_id
+        self.trace_id = trace_id
         self.owner = owner
         self.updates = 0
 
-    def generation(self, **kwargs):
+    def start_observation(self, **kwargs):
         self.owner.generation_starts += 1
         return FakeGeneration(self.owner)
 
     def update(self, **kwargs):
         self.updates += 1
 
-    def end(self):
+    def end(self, **kwargs):
         self.owner.trace_ends += 1
 
 
@@ -52,13 +56,16 @@ class FakeClient:
         self.generation_ends = 0
         self.trace_ends = 0
 
-    def trace(self, **kwargs):
+    def start_observation(self, **kwargs):
         trace = FakeTrace(f"t{len(self.traces) + 1}", self)
         self.traces.append(trace)
         return trace
 
-    def score(self, **kwargs):
+    def create_score(self, **kwargs):
         self.scores.append(kwargs)
+
+    def flush(self):
+        pass
 
 
 def _make_traced_agent(dialect):

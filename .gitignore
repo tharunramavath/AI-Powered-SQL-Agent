@@ -35,3 +35,23 @@ frontend/.vite/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# SQLite WAL/journal temp files
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Coverage / CI reports
+.coverage.*
+coverage.xml
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

@@ -101,8 +101,12 @@ class QueryService:
             datasource_id=request.datasource_id,
             thread_id=request.thread_id or "",
         )
-        config = {"configurable": {"thread_id": request.thread_id}} if request.thread_id else {}
-        async for snapshot in agent.graph.astream(state, config=config, stream_mode="values"):
+        # Ensure a thread_id so the checkpointer-backed graph can run even
+        # when the client omits one (also guarantees a stable LangFuse trace).
+        config = agent._ensure_thread_id({})  # type: ignore[attr-defined]
+        if request.thread_id:
+            config["configurable"]["thread_id"] = request.thread_id
+        async for snapshot in agent.astream(state, config=config):
             yield snapshot
 
     # -- helpers ---------------------------------------------------------

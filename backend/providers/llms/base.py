@@ -44,6 +44,12 @@ def estimate_cost_usd(model: str, usage: dict[str, int]) -> float:
 class BaseLangChainLLM(LLMProvider, ABC):
     """Abstract base for LangChain chat-model-backed providers."""
 
+    #: Extra kwargs passed to the chat model when ``structured=True`` is
+    #: requested (e.g. ``response_format={"type": "json_object"}`` for
+    #: OpenAI-compatible APIs). Providers that cannot force JSON output leave
+    #: this empty and rely on the prompt + ``parse_json_content`` fallback.
+    json_mode_kwargs: dict[str, Any] = {}
+
     def __init__(self, *, model: str, temperature: float = 0.1, max_tokens: int = 4096):
         """Store provider options.
 
@@ -96,7 +102,7 @@ class BaseLangChainLLM(LLMProvider, ABC):
         if stop:
             kwargs["stop"] = stop
         if structured:
-            kwargs["format"] = "json_object"
+            kwargs.update(type(self).json_mode_kwargs)
 
         try:
             response = chat.invoke(langchain_messages, **kwargs)

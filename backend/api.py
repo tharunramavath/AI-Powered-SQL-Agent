@@ -11,7 +11,7 @@ import asyncio
 import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.core.container import Container
@@ -64,7 +64,7 @@ async def health(request: Request) -> dict[str, Any]:
 
 
 @router.get("/metrics")
-async def metrics() -> dict[str, Any]:
+async def metrics() -> Response:
     """Prometheus-format metrics endpoint.
 
     Returns:
@@ -72,11 +72,10 @@ async def metrics() -> dict[str, Any]:
     """
     from prometheus_client import generate_latest
 
-    content_type = "text/plain; version=0.0.4; charset=utf-8"
-    return {
-        "body": generate_latest().decode("utf-8"),
-        "content_type": content_type,
-    }
+    return Response(
+        content=generate_latest(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @router.get("/datasources", dependencies=[Depends(_require_auth)])
@@ -108,7 +107,7 @@ async def run_query(request: Request, query: QueryRequest) -> AgentResult:
     """
     service = _get_service(request)
     try:
-        return service.run(query)
+        return await asyncio.to_thread(service.run, query)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -137,8 +136,10 @@ async def approve_query(
     approved = bool(payload.get("approved", False))
     if not thread_id:
         raise HTTPException(status_code=400, detail="thread_id is required to resume a query")
+    service = _get_service(request)
     try:
-        return _get_service(request).resume(
+        return await asyncio.to_thread(
+            service.resume,
             thread_id=thread_id,
             datasource_id=datasource_id,
             approved=approved,
@@ -166,17 +167,24 @@ async def stream_query(request: Request, query: QueryRequest):
     service = _get_service(request)
 
     async def _event_stream():
+        last_result = None
         try:
             async for snapshot in service.stream(query):
+                if snapshot.get("result") is not None:
+                    last_result = snapshot["result"]
                 yield f"data: {json.dumps(snapshot, default=str)}\n\n"
                 await asyncio.sleep(0)
         except KeyError as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+            return
         except Exception as exc:  # pragma: no cover
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+            return
 
-        final = await asyncio.to_thread(service.run, query)
-        yield f"event: result\ndata: {final.model_dump_json()}\n\n"
+        if last_result is None:
+            yield f"event: error\ndata: {json.dumps({'detail': 'Agent finished without a result.'})}\n\n"
+            return
+        yield f"event: result\ndata: {last_result.model_dump_json()}\n\n"
 
     return StreamingResponse(
         _event_stream(),

@@ -23,7 +23,7 @@ API_BASE = os.getenv("AI_SQL_AGENT_API", "http://localhost:8000/api/v1")
 API_KEY = os.getenv("AI_SQL_AGENT_API_KEY", "")
 MAX_TIMEOUT_SECONDS = 300
 
-st.set_page_config(page_title="AI SQL Agent", page_icon=":database:", layout="wide")
+st.set_page_config(page_title="AI SQL Agent", page_icon=":material/database:", layout="wide")
 
 
 # -- API helpers -----------------------------------------------------------
@@ -37,9 +37,12 @@ def _headers() -> dict[str, str]:
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def fetch_datasources(base_url: str) -> list[dict[str, Any]]:
+def fetch_datasources(base_url: str, api_key: str = "") -> list[dict[str, Any]]:
     """Return the registered datasource summaries from the backend."""
-    resp = httpx.get(f"{base_url}/datasources", timeout=10)
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    resp = httpx.get(f"{base_url}/datasources", headers=headers, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -57,14 +60,14 @@ def fetch_health(base_url: str) -> dict[str, Any] | None:
 
 def _stage_label(snapshot: dict[str, Any]) -> str:
     """Map the latest agent state snapshot to a human-readable stage label."""
-    if "schema" in snapshot and "plan" not in snapshot:
-        return "Loading database schema..."
-    if "plan" in snapshot and "sql" not in snapshot:
-        return "Understanding the question..."
-    if "sql" in snapshot and "columns" not in snapshot:
-        return "Generating & validating SQL..."
-    if "rows" in snapshot:
+    if snapshot.get("columns") or snapshot.get("result") is not None:
         return "Executing query & formatting answer..."
+    if snapshot.get("sql"):
+        return "Generating & validating SQL..."
+    if snapshot.get("plan"):
+        return "Understanding the question..."
+    if snapshot.get("schema"):
+        return "Loading database schema..."
     return "Working..."
 
 
@@ -240,7 +243,7 @@ with st.sidebar:
     st.divider()
     datasources = []
     try:
-        datasources = fetch_datasources(base_url)
+        datasources = fetch_datasources(base_url, api_key)
     except httpx.HTTPError:
         st.warning("Could not load datasources.")
     if datasources:

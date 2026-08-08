@@ -34,14 +34,115 @@ def estimate_rows_scanned(engine: Engine, sql: str, dialect: str) -> int | None:
     if dialect not in {"postgresql", "mysql", "sqlite"}:
         return None
     try:
-        explain_sql = f"EXPLAIN {sql}"
+        if dialect == "sqlite":
+            return _estimate_sqlite_scan(engine, sql)
+
         with engine.connect() as conn:
-            result = conn.execute(text(explain_sql))
-            plan_lines = [str(row[0]) for row in result]
-        return _parse_row_estimate("\n".join(plan_lines), dialect)
+            result = conn.execute(text(f"EXPLAIN {sql}"))
+            key_names = result.keys()
+            column_names = [k.lower() for k in key_names]
+            rows = list(result.fetchall())
+        if dialect == "mysql":
+            # MySQL EXPLAIN carries the per-row estimate in the `rows`
+            # column (tab-9), not the `id` column (tab-0).
+            try:
+                idx = column_names.index("rows")
+            except ValueError:
+                logger.debug("mysql_explain_missing_rows", keys=column_names)
+                return None
+            estimates = []
+            for row in rows:
+                value = row[idx]
+                if value is not None:
+                    try:
+                        estimates.append(int(value))
+                    except (TypeError, ValueError):
+                        continue
+            return max(estimates) if estimates else None
+        # postgresql: plan text lives in the single QUERY PLAN column.
+        return _parse_row_estimate("\n".join(str(row[0]) for row in rows), dialect)
     except Exception as exc:
         logger.debug("explain_failed", error=str(exc))
         return None
+
+
+def _estimate_sqlite_scan(engine: Engine, sql: str) -> int | None:
+    """Estimate rows scanned for SQLite via ``EXPLAIN QUERY PLAN``.
+
+    SQLite plans do not embed row counts, so we resolve every table that is
+    full-scanned (``SCAN`` without an index) and return the largest live row
+    count. Returns None when nothing can be estimated.
+
+    Args:
+        engine: SQLAlchemy engine.
+        sql: The SELECT statement to analyze.
+
+    Returns:
+        An estimated row count, or None if unavailable.
+    """
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"EXPLAIN QUERY PLAN {sql}")).fetchall()
+    except Exception as exc:
+        logger.debug("sqlite_explain_plan_failed", error=str(exc))
+        return None
+    if not rows:
+        return None
+
+    scanned = [str(row[3]) for row in rows]
+    if not any(re.search(r"^\s*SCAN\s+\S+", line) for line in scanned):
+        return None  # no full-table scans to cost
+
+    alias_map, table_names = _resolve_tables(sql)
+    counts = []
+    for line in scanned:
+        match = re.search(r"^\s*SCAN\s+(\S+)", line)
+        if not match:
+            continue
+        token = match.group(1).strip('"')
+        table = alias_map.get(token.lower())
+        if not table:
+            # Schema-qualified in the plan (e.g. "main.products").
+            table = token.split(".")[-1]
+        if table.lower() not in table_names:
+            continue
+        try:
+            with engine.connect() as conn:
+                count = conn.execute(
+                    text(f'SELECT COUNT(*) FROM "{table}"')
+                ).scalar_one()
+            counts.append(int(count))
+        except Exception:
+            continue
+    return max(counts) if counts else None
+
+
+def _resolve_tables(sql: str) -> tuple[dict[str, str], set[str]]:
+    """Map SQL aliases to real table names for EXPLAIN-plan resolution.
+
+    Args:
+        sql: The SELECT statement.
+
+    Returns:
+        Tuple of (alias -> table name, set of lowercased table names).
+    """
+    try:
+        import sqlglot
+
+        expression = sqlglot.parse_one(sql, read="sqlite")
+    except Exception:
+        return {}, set()
+    alias_map: dict[str, str] = {}
+    table_names: set[str] = set()
+    for table in expression.find_all(sqlglot.exp.Table):
+        name = table.name
+        if not name:
+            continue
+        table_names.add(name.lower())
+        alias = getattr(table, "alias", None)
+        if alias and alias.lower() != name.lower():
+            alias_map[alias.lower()] = name
+    return alias_map, table_names
 
 
 def _parse_row_estimate(plan: str, dialect: str) -> int | None:
@@ -58,8 +159,6 @@ def _parse_row_estimate(plan: str, dialect: str) -> int | None:
         match = re.search(r"rows=(\d+)", plan)
     elif dialect == "mysql":
         match = re.search(r"rows:\s*(\d+)", plan)
-    elif dialect == "sqlite":
-        match = re.search(r"SCAN TABLE\s+\w+(?:\s+\((\d+)\s+rows?\))?", plan)
     else:
         match = None
     if match:

@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 class GroqLLMProvider(BaseLangChainLLM):
     """LLM provider backed by Groq's fast inference API."""
 
+    json_mode_kwargs = {"response_format": {"type": "json_object"}}
+
     def __init__(
         self,
         *,

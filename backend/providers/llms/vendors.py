@@ -15,6 +15,8 @@ from backend.providers.llms.base import BaseLangChainLLM
 class OpenAILLMProvider(BaseLangChainLLM):
     """LLM provider backed by OpenAI's chat completions API."""
 
+    json_mode_kwargs = {"response_format": {"type": "json_object"}}
+
     def __init__(
         self,
         *,

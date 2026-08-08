@@ -138,6 +138,10 @@ class SQLAgent:
             update: dict[str, Any] = {"validation": result}
             if not result.valid:
                 update["errors"] = ["Validation failed: " + "; ".join(result.reasons)]
+            else:
+                # Execute the extracted/normalized statement (not the raw LLM
+                # output) so fenced SQL and dialect quirks are handled here.
+                update["sql"] = result.sql
             return update
 
         def _analyze(state: dict[str, Any]) -> dict[str, Any]:
@@ -263,7 +267,9 @@ class SQLAgent:
         validation = state.get("validation")
         if validation is not None and getattr(validation, "valid", False):
             return "execute"
-        if state.get("attempts", 0) < self._max_sql_retries:
+        # `attempts` counts generations so far; allow up to max_sql_retries
+        # retries after the first generation.
+        if state.get("attempts", 0) <= self._max_sql_retries:
             return "generate_sql"
         return "fail"
 
@@ -281,7 +287,7 @@ class SQLAgent:
             return END
         if state.get("columns"):
             return "analyze"
-        if state.get("attempts", 0) < self._max_sql_retries:
+        if state.get("attempts", 0) <= self._max_sql_retries:
             return "generate_sql"
         return "fail"
 
@@ -358,6 +364,40 @@ class SQLAgent:
                 if snapshot.get("result") is not None:
                     last_result = snapshot["result"]
                 yield snapshot
+        self._finish_stream_trace(tracer, trace, last_result)
+
+    async def astream(self, state: Mapping[str, Any], *, config: dict[str, Any] | None = None):
+        """Run the agent and asynchronously stream state updates (traced).
+
+        Args:
+            state: Initial graph state.
+            config: Optional LangGraph config.
+
+        Yields:
+            Each graph state snapshot (dict) as it becomes available.
+        """
+        config = self._ensure_thread_id(config)
+        tracer = self._tracer or get_tracer()
+        trace = tracer.start_trace(
+            name="sql-agent-run",
+            input=state.get("query", ""),
+            session_id=str(config.get("configurable", {}).get("thread_id", "")),
+            metadata={"datasource_id": state.get("datasource_id", "")},
+            release=None,
+        )
+        last_result: AgentResult | None = None
+        with tracer.trace_context(trace):
+            async for snapshot in self.graph.astream(
+                dict(state), config=config, stream_mode="values"
+            ):
+                if snapshot.get("result") is not None:
+                    last_result = snapshot["result"]
+                yield snapshot
+        self._finish_stream_trace(tracer, trace, last_result)
+
+    @staticmethod
+    def _finish_stream_trace(tracer, trace, last_result: AgentResult | None) -> None:
+        """Close a streamed LangFuse trace with the last seen result."""
         tracer.update_trace(
             trace,
             output=_result_summary(last_result) if last_result else None,

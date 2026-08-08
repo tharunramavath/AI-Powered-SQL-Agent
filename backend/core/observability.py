@@ -103,17 +103,20 @@ class TracingService:
         """
         if not self.enabled:
             return None
-        kwargs: dict[str, Any] = {"trace": name, "name": name, "input": input}
+        meta = dict(metadata or {})
         if session_id:
-            kwargs["session_id"] = session_id
+            meta.setdefault("session_id", session_id)
         if user_id:
-            kwargs["user_id"] = user_id
-        if metadata:
-            kwargs["metadata"] = metadata
-        if release:
-            kwargs["release"] = release
+            meta.setdefault("user_id", user_id)
         try:
-            return self._client.trace(**kwargs)
+            # langfuse >= 4.x has no client.trace(); a root observation with a
+            # non-span as_type doubles as the trace for this agent run.
+            return self._client.start_observation(
+                name=name,
+                as_type="agent",
+                input=input,
+                metadata=meta or None,
+            )
         except Exception as exc:  # pragma: no cover - best effort in prod
             logger.warning("langfuse_trace_failed", error=str(exc))
             return None
@@ -139,12 +142,15 @@ class TracingService:
         if not self.enabled or trace is None:
             return
         try:
-            trace.update(
-                output=output,
-                metadata=metadata or {},
-                status=status,
-                level=level,
-            )
+            kwargs: dict[str, Any] = {
+                "output": output,
+                "metadata": metadata or {},
+            }
+            if status:
+                kwargs["status_message"] = status
+            if level:
+                kwargs["level"] = level
+            trace.update(**kwargs)
         except Exception as exc:  # pragma: no cover
             logger.warning("langfuse_trace_update_failed", error=str(exc))
 
@@ -159,8 +165,9 @@ class TracingService:
             return
         try:
             if status:
-                trace.update(status=status)
+                trace.update(status_message=status)
             trace.end()
+            self._client.flush()
         except Exception as exc:  # pragma: no cover
             logger.warning("langfuse_trace_end_failed", error=str(exc))
 
@@ -190,12 +197,13 @@ class TracingService:
         if not self.enabled:
             return None
         parent = span if span is not None else trace
-        if parent is None:
+        if parent is None or not hasattr(parent, "start_observation"):
             return None
         try:
-            return parent.generation(
+            return parent.start_observation(
                 name=name,
-                model=model,
+                as_type="generation",
+                model=model or None,
                 input=input,
                 model_parameters=model_params or {},
             )
@@ -224,12 +232,15 @@ class TracingService:
         if not self.enabled or generation is None:
             return
         try:
-            generation.end(
-                output=output,
-                usage=usage or {},
-                metadata=metadata or {},
-                level=level,
-            )
+            kwargs: dict[str, Any] = {
+                "output": output,
+                "usage_details": usage or {},
+                "metadata": metadata or {},
+            }
+            if level:
+                kwargs["level"] = level
+            generation.update(**kwargs)
+            generation.end()
         except Exception as exc:  # pragma: no cover
             logger.warning("langfuse_generation_end_failed", error=str(exc))
 
@@ -253,12 +264,11 @@ class TracingService:
         """
         if not self.enabled or trace is None:
             return
-        trace_id = getattr(trace, "id", None)
+        trace_id = getattr(trace, "trace_id", None) or getattr(trace, "id", None)
         if not trace_id:
             return
         try:
             payload: dict[str, Any] = {
-                "trace": trace_id,
                 "trace_id": trace_id,
                 "name": name,
                 "value": value,
@@ -267,7 +277,7 @@ class TracingService:
                 payload["comment"] = comment
             if metadata:
                 payload["metadata"] = metadata
-            self._client.score(**payload)
+            self._client.create_score(**payload)
         except Exception as exc:  # pragma: no cover
             logger.warning("langfuse_score_failed", error=str(exc))
 

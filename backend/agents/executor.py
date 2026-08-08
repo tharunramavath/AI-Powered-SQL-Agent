@@ -16,7 +16,6 @@ from backend.cache.result_cache import ResultCache
 from backend.core.logging import get_logger
 from backend.database.optimizer import estimate_rows_scanned
 from backend.interfaces.database import DatabaseDialect
-from backend.models.schemas import ExecutionStats
 
 logger = get_logger(__name__)
 
@@ -114,15 +113,12 @@ class ExecutorNode:
             error_msg = str(exc)
             logger.warning("execution_failed", attempts=attempts, error=error_msg)
             return {
-                "errors": [f"Execution error (attempt {attempts + 1}): {error_msg}"],
+                "errors": [f"Execution error (attempt {attempts}): {error_msg}"],
                 "needs_approval": False,
             }
 
         if estimated is not None:
-            stats = ExecutionStats(
-                **stats.model_dump(),
-                estimated_rows_scanned=estimated,
-            )
+            stats = stats.model_copy(update={"estimated_rows_scanned": estimated})
 
         # Store the successful result in the cache for future identical queries.
         if self._cache is not None and self._cache.enabled:

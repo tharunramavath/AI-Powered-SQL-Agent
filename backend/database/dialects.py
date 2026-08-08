@@ -102,10 +102,17 @@ def normalize_sql_for_dialect(sql: str, sqlglot_dialect: str) -> str:
         dialect is unknown to SQLGlot.
     """
     try:
-        import sqlglot
+        import re
+
         from sqlglot import transpile
 
-        parsed = sqlglot.parse_one(sql, read="postgres")
-        return transpile(str(parsed), read="postgres", write=sqlglot_dialect)[0]
+        normalized = transpile(sql, read="postgres", write=sqlglot_dialect)[0]
+        # Parsing as Postgres materializes its default NULL ordering into the
+        # output (NULLS FIRST for DESC, NULLS LAST for ASC). That silently
+        # changes row order vs. the target dialect and is a syntax error on
+        # older SQLite (< 3.30). Strip it so the target dialect's native
+        # ordering applies.
+        normalized = re.sub(r"\s+NULLS\s+(FIRST|LAST)", "", normalized, flags=re.IGNORECASE)
+        return normalized
     except Exception:
         return sql
